@@ -1,182 +1,522 @@
 jQuery(document).ready(function ($) {
-    // Activate chosen select boxes
-    $(".mashsb-chosen-select").chosen({width: "400px"});
+    // Run mashShare singleton
+    mashShare.init();
+});
 
-    function mashsb_setCookie(name, value, days) {
+/**
+ * Selector cache
+ * @type {{get, refresh, getSelectors}}
+ */
+var cache = function()
+{
+    // Cached selectors
+    var selectors = {};
+
+    // Get selector from cache
+    // If selector is not in cache, then cache it
+    var getCache = function(selector)
+    {
+        // Selector cache doesn't exist, cache it
+        if (typeof(selectors[selector]) === "undefined") selectors[selector] = jQuery(selector);
+
+        // Return cached selector
+        return selectors[selector];
+    };
+
+    // Refresh selector in cache
+    // If selector is not in cache, then cache it
+    var refresh = function(selector)
+    {
+        // Selector cache doesn't exist, cache it
+        if (typeof(selectors[selector]) === "undefined") getCache(selector);
+        // Update cache
+        else selectors[selector] = jQuery(selector);
+
+        // Return cached / refreshed selector
+        return selectors[selector];
+    };
+
+    // Return values
+    return {
+        get         : getCache,
+        refresh     : refresh,
+        getSelectors: selectors
+    }
+}();
+
+/**
+ * @class mashShare
+ * @type {{init, dataActionSelect, getOptions}}
+ */
+var mashShare = function($)
+{
+    /**
+     * @desc Main element actions related to mashShare plugin and possibly addons
+     */
+    var elements        = function()
+    {
+        // Variables
+        var $settingsShareMethod        = cache.get("#mashsb_settings\\[mashsb_sharemethod\\]"),
+            $settingsGeneralHeader      = cache.get("#mashsb_settingsgeneral_header"),
+            $settingsCachingMethod      = cache.get("#mashsb_settings\\[caching_method\\]"),
+            $mashShareButtonsContainer  = cache.get("#mashsb_container"),
+            $mashShareButtonMessage     = cache.get(".mashsb-message"),
+            $mashTabs                   = cache.get(".mashsb-tabs"),
+            activeTab                   = findActiveTabAnchor(true); // Find active tab and set cookie with #ID
+
+        // Activate chosen select boxes
+        $(".mashsb-chosen-select").chosen({width: "400px"});
+
+        // Share Method
+        // Common share method; DRY code
+        function shareMethod(value) {
+            if (value === "sharedcount") {
+                $settingsGeneralHeader.find(".row:nth-child(3), .row:nth-child(4)").fadeIn(500);
+            }
+            else {
+                $settingsGeneralHeader.find(".row:nth-child(3), .row:nth-child(4)").fadeOut(500);
+            }
+        }
+
+        // Fade in sharedcount settings if needed
+        $settingsShareMethod.change(function () {
+            shareMethod(this.value);
+        });
+
+        // Make sharedcount.com when it is in use
+        shareMethod($settingsShareMethod.val());
+
+        // Caching method
+        // Common caching method; DRY code
+        function cachingMethod(value) {
+            if (value === "refresh_loading") {
+                $settingsGeneralHeader.find(".row:nth-child(6)").fadeIn(500);
+            }
+            else {
+                $settingsGeneralHeader.find(".row:nth-child(6)").fadeOut(500);
+            }
+        }
+
+        // Fade in caching method settings if needed
+        $settingsCachingMethod.change(function () {
+            cachingMethod(this.value);
+        });
+
+        // Make visible when setting "Refresh on Loading" is used
+        cachingMethod($settingsCachingMethod.val());
+
+        // Get default tab selector for easytabs plugin
+        function defaultTab() {
+            // If active tab is Add-On Settings return empty defaultTab value
+            var tab_addons  = $(".mashsb.nav-tab-wrapper a.nav-tab-active:nth-child(2)"),
+                tab_licenses= $(".mashsb.nav-tab-wrapper a.nav-tab-active:nth-child(3)");
+
+            if (tab_addons.length > 0 || tab_licenses.length > 0) {
+                return;
+            }
+
+            // Return active tab from cookie
+            return activeTab + "-nav";
+        }
+
+        // Start easytabs()
+        if ($mashTabs.length > 0) {
+            $mashShareButtonsContainer.easytabs({
+                animate: true,
+                updateHash: true,
+                defaultTab: defaultTab()
+            });
+
+            // Update cookie upon a tab click
+            $mashTabs.find('a').on("click", function() {
+                setCookie("mashsb_active_tab", this.getAttribute("href"));
+            });
+        }
+
+        // Get active tab (Not for Add-On Settings)
+        $mashShareButtonsContainer.bind("easytabs:after", function() {
+            if ($(".mashsb.nav-tab-wrapper a.nav-tab-active:nth-child(2)").length == 0) {
+                findActiveTabAnchor();
+            }
+        });
+
+        if ($(".mashtab").length > 0) {
+            $(".tabcontent_container").easytabs({
+                animate: true
+            });
+        }
+
+        // Drag n drop social networks
+        $("#mashsb_network_list").sortable({
+            items   : ".mashsb_list_item",
+            opacity : 0.6,
+            cursor  : "move",
+            axis    : 'y',
+            update  : function () {
+                var order = $(this).sortable("serialize") + "&action=mashsb_update_order";
+                $.post(ajaxurl, order, function (response) {
+                    //alert(response);
+                });
+            }
+        });
+
+        // show / hide helper description
+        $(".mashsb-helper").click(function (e) {
+            e.preventDefault();
+            var $icon   = $(this),
+                $bubble = $icon.next(),
+                position= $icon.position();
+
+            // Close any that are already open
+            $(".mashsb-message").not($bubble).hide();
+
+            if ($bubble.hasClass("bottom")) {
+                $bubble.css({
+                    left: (position.left - $bubble.width() / 2) + "px",
+                    top : (position.top + $icon.height() + 9) + "px"
+                });
+            }
+            else {
+                $bubble.css({
+                    left: (position.left + $icon.width() + 9) + "px",
+                    top : (position.top + $icon.height() / 2 - 18) + "px"
+                });
+            }
+
+            $bubble.toggle();
+
+            e.stopPropagation();
+        });
+
+        $("body").click(function () {
+            $mashShareButtonMessage.hide();
+        });
+
+        $mashShareButtonMessage.click(function (e) {
+            e.stopPropagation();
+        });
+
+        // Hide elements
+        $(".mashShare_hideMe").hide();
+
+        // Tags with data-action attribute
+        $("[data-action]").each(function() {
+            // Variables
+            var $this   = $(this),
+                name    = "dataAction" + $this.prop("tagName").toLowerCase().ucFirst();
+
+            // There is no method within mashShare singleton for this specific tag / HTML element
+            if (typeof(window["mashShare"][name]) === "undefined") return false;
+
+            // Execute function for the tag / HTML element
+            execute("mashShare." + name, $this);
+        });
+    };
+
+    /**
+     * @desc Method for handling select elements with data-action attributes
+     *
+     * @param $element
+     */
+    var dataActionSelect = function($element)
+    {
+        // Common change function; DRY coding
+        // Used for both on page load and on selection
+        function change($select) {
+            // Variables
+            var options     = getOptions($select, "action"),
+                value       = $select.find("option:selected").val();
+
+            // No elements or selections attribute is provided
+            if (typeof(options.elements) === "undefined") return false;
+
+            // Look for element parents instead of elements
+            if (typeof(options.parents) !== "undefined") {
+                // Hide all elements first
+                var elements = options.elements.split(',');
+
+                for (var x in elements) {
+                    $(elements[x].trim()).parents(options.parents).hide();
+                }
+
+                // If an attribute set for selected value, display its elements.
+                if (typeof(options["selectionOpt" + value]) !== "undefined") {
+                    $(options["selectionOpt" + value]).parents(options.parents).show();
+                }
+            }
+            // Just hide the elements
+            else {
+                // Hide all elements first
+                $(options.elements).hide();
+
+                // If an attribute set for selected value, display its elements.
+                if (typeof(options["selectionOpt" + value]) !== "undefined") {
+                    $(options["selectionOpt" + value]).show();
+                }
+            }
+        }
+
+        // Upon page load
+        change($element);
+
+        // On selection
+        $element.on("change", function() {
+            change($(this));
+        })
+    };
+
+    /**
+     * @desc Executes the callback with given data. Data is optional
+     *
+     * @param callback
+     * @param data (optional)
+     */
+    var execute         = function(callback, data)
+    {
+        // Callback name
+        var name = callback.split('.');
+
+
+        // Some controls
+        if (typeof(window[name[0]]) === "undefined") {
+            alert("Failed callback execution; function" + name[0] + " doesn't exist");
+        }
+        else if (typeof(name[1]) !== "undefined" && typeof(window[name[0]][name[1]]) === "undefined") {
+            alert("Failed callback execution; function" + name[0] + "." + name[1] + " doesn't exist");
+        }
+
+        // Double
+        if (name[0].length > 0 && name[1].length > 0) {
+            (typeof(data) !== "undefined") ? window[name[0]][name[1]](data) : window[name[0]][name[1]]();
+        }
+        // Single
+        else if (name[0].length > 0) {
+            (typeof(data) !== "undefined") ? window[name[0]](data) : window[name[0]]();
+        }
+    };
+
+    /**
+     * @desc Gets "data" attributes from given element.
+     * Specific data attribute can be excluded with exclude parameter. Exclude can be a string or an array.
+     * If a specific set of data element is required such as attributes starts with "data-mashshare"
+     * this could be passed via dataName parameter.
+     *
+     * @example getOptions("select[name='mashshareOption']")
+     * @example getOptions("#mashShareOption", "data-exclude-me")
+     * @example getOptions("#mashShareOption", ["data-exclude-me", "data-exclude-me-too"])
+     * @example getOptions("#mashShareOption", null, "data-mashShare")
+     * @example getOptions("#mashShareOption", "data-mashShare-exclude", "data-mashShare")
+     *
+     * @param element
+     * @param exclude (optional)
+     * @param dataName (optional)
+     * @returns {{}}
+     */
+    var getOptions      = function(element, exclude, dataName)
+    {
+        // Variables
+        var options     = {},
+            attributes  = (typeof(element[0]) !== "undefined") ? element[0].attributes : element.attributes,
+            name, dataNameLength;
+
+        // Set data name / prefix
+        dataName        = (typeof(dataName) === "undefined") ? "data-" : "data-" + dataName;
+        dataNameLength  = dataName.length;
+
+        // Loop through attributes of the element
+        $(attributes).each(function() {
+
+            // Get only data
+            if (this.name.substr(0, dataNameLength) === dataName) {
+                name = this.name.substr(dataNameLength, this.name.length).replace('-', ' ');
+
+                // Uppercase words and remove spaces
+                name = (name + '')
+                    .replace(/^([a-z\u00E0-\u00FC])|\s+([a-z\u00E0-\u00FC])/g, function($1) {
+                        return $1.toUpperCase();
+                    }).replace(' ', '');
+
+                // Lowercase first character
+                name = name.charAt(0).toLowerCase() + name.substr(1);
+
+                // Exclude
+                // Array
+                if (typeof(exclude) === "object" && $.inArray(name, exclude) != -1) return true;
+                // String
+                if (typeof(exclude) === "string" && name === exclude) return true;
+
+                // Add option
+                options[name] = this.value;
+            }
+        });
+
+        return options;
+    };
+
+    /**
+     * @desc Sets cookie with given name, value and day
+     *
+     * @param name
+     * @param value
+     * @param days
+     */
+    var setCookie       = function(name, value, days)
+    {
+        var expires = '';
+
         if (days) {
             var date = new Date();
             date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-            var expires = "; expires=" + date.toGMTString();
+            expires = "; expires=" + date.toGMTString();
         }
-        else
-            var expires = "";
+
         document.cookie = name + "=" + value + expires + "; path=/";
-    }
+    };
 
-    function mashsb_getCookie(name) {
-        var nameEQ = name + "=";
+    /**
+     * @desc Gets cookie of given name
+     *
+     * @param name
+     * @returns {*}
+     */
+    var getCookie       = function(name)
+    {
+        var nameEQ = name + "=",
+            ca = document.cookie.split(";"),
+            i;
 
-        var ca = document.cookie.split(";");
-        for (var i = 0; i < ca.length; i++) {
+        for (i = 0; i < ca.length; i++) {
             var c = ca[i];
-            while (c.charAt(0) == ' ')
+
+            while (c.charAt(0) == ' ') {
                 c = c.substring(1, c.length);
-            if (c.indexOf(nameEQ) == 0)
-                return c.substring(nameEQ.length, c.length);
+            }
+
+            if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
         }
         return null;
-    }
+    };
 
-    function mashsb_eraseCookie(name) {
+    /**
+     * @desc Deleted cookie
+     *
+     * @param name
+     */
+    var eraseCookie     = function(name)
+    {
         setCookie(name, "", -1);
-    }
+    };
 
-    /* Fade in sharedcount settings if needed */
-    $('#mashsb_settings\\[mashsb_sharemethod\\]').change(function () {
-        if ($('#mashsb_settings\\[mashsb_sharemethod\\]').val() === "sharedcount")
-        {
-            $('#mashsb_settingsgeneral_header .row:nth-child(3), #mashsb_settingsgeneral_header .row:nth-child(4)').fadeIn(500);
-        }
-        else
-        {
-            $('#mashsb_settingsgeneral_header .row:nth-child(3), #mashsb_settingsgeneral_header .row:nth-child(4)').fadeOut(500);
-        }
-    });
-
-    /*make visible when sharedcount.com is used*/
-    if ($('#mashsb_settings\\[mashsb_sharemethod\\]').val() === "sharedcount")
+    /**
+     * @desc Gets active tab (from href attribute) and return its value.
+     * It sets a cookie with "mashsb_active_tab" if shouldSetCookie parameter is not defined
+     * or its value is true (boolean)
+     *
+     * @param shouldSetCookie
+     * @returns {*}
+     */
+    var findActiveTabAnchor     = function(shouldSetCookie)
     {
-        $('#mashsb_settingsgeneral_header .row:nth-child(3), #mashsb_settingsgeneral_header .row:nth-child(4)').fadeIn(500);
-    }
-    
-    
-    /* Fade in Caching method settings if needed */
-    $('#mashsb_settings\\[caching_method\\]').change(function () {
-        if ($('#mashsb_settings\\[caching_method\\]').val() === "refresh_loading")
-        {
-            $('#mashsb_settingsgeneral_header .row:nth-child(6)').fadeIn(500);
-        }
-        else
-        {
-            $('#mashsb_settingsgeneral_header .row:nth-child(6)').fadeOut(500);
-        }
-    });
+        // Should set cookie is not defined
+        if (typeof(shouldSetCookie) === "undefined") shouldSetCookie = true;
 
-    /*make visible when setting "Refresh on Loading" is used*/
-    if ($('#mashsb_settings\\[caching_method\\]').val() === "refresh_loading")
+        var activeTabAnchor = getCookie("mashsb_active_tab"),
+            $mashTabs       = cache.get(".mashsb-tabs"),
+            $tabElement     = $mashTabs.find("a[href='" + activeTabAnchor + "']");
+
+        // Get active tab anchor from tab listing, it wasn't given or it doesn't exist
+        if ($tabElement.length < 1) {
+            activeTabAnchor = $(".mashsb-tabs.active").find("a").attr("href");
+
+            // No active tabs, get the first tab as an active one
+            if (typeof(activeTabAnchor) === "undefined") {
+                activeTabAnchor = $(".mashsb-tabs:first").find("a").attr("href");
+            }
+
+            // Update $tabElement
+            $tabElement     = $mashTabs.find("a[href='" + activeTabAnchor + "']");
+        }
+
+        // Validate if the tab element is actually activated, if not activate it
+        if (!$tabElement.hasClass("active")) {
+            $mashTabs.find("a[href='" + activeTabAnchor + "']").addClass("active").parents("li.mashsb-tabs").addClass("active");
+        }
+
+        // If we should set cookie, set it
+        if (shouldSetCookie === true) setCookie("mashsb_active_tab", activeTabAnchor);
+
+        // Return active tab anchor
+        return activeTabAnchor;
+    };
+
+    // TODO remove this, no need so far
+    /**
+     * @desc Gets active tab anchor from cookie. If it is not set, it sets "#mashsb_settingsgeneral_header" as a
+     * default active tab anchor
+     *
+     * @returns {*}
+     */
+    var getActiveTabFromCookie  = function()
     {
-        $('#mashsb_settingsgeneral_header .row:nth-child(6)').fadeIn(500);
+        // Get active tab anchor from cookie
+        var activeTabAnchor = getCookie("mashsb_active_tab");
+
+        // No active tab, set a default value
+        if (activeTabAnchor == null) activeTabAnchor = "#mashsb_settingsgeneral_header";
+
+        // Return active tab anchor
+        return activeTabAnchor;
+    };
+
+    /**
+     * @desc Publicly available methods for our singleton
+     */
+    return {
+        // Initialization
+        init: function() {
+            elements();
+            log("MashShare Singleton Initialized");
+        },
+        // Publicly accessible methods
+        dataActionSelect: dataActionSelect,
+        getOptions: getOptions,
+        setCookie: setCookie,
+        getCookie: getCookie,
+        eraseCookie: eraseCookie,
+        findActiveTabAnchor: findActiveTabAnchor,
+        getActiveTabFromCookie: getActiveTabFromCookie
     }
+}(jQuery);
 
-    // Find active tab and set cookie with #ID
-    function find_active_tab() {
-        var tab = jQuery('.mashsb-tabs.active').find("a").attr("href");
-        mashsb_setCookie("mashsb_active_tab", tab);
-    }
+// Functions
+/**
+ * @desc Shorter thus easier to code `log("hello world");` than `console.log("hello world");` Nothing fancy
+ *
+ * @param variable
+ */
+function log(variable)
+{
+    console.log(variable);
+}
 
-    // Get last active tab from cookie or return default value
-    function mashsb_get_tab_from_cookie() {
-        var tab = mashsb_getCookie('mashsb_active_tab');
-        if (tab == null) {
-            tab = '#mashsb_settingsgeneral_header';
-        }
-        return tab;
-    }
+// Prototypes
+/**
+ * @desc Upper case first. Pretty much what PHP's `ucfirst();` does...
+ * Just added to String prototype for better access.
+ * We also check if `ucFirst` is already defined in String prototype if not, we add one.
+ *
+ * @returns {string}
+ */
+String.prototype.ucFirst = String.prototype.ucFirst || function()
+{
+    return this.charAt(0).toUpperCase() + this.slice(1);
+};
 
-
-    function mashsb_get_default_array() {
-        var tab_addons, tab_licenses;
-        var active_sub_tab;
-
-        // If active tab is Add-On Settings return empty defaultTab value
-        tab_addons = jQuery('.mashsb.nav-tab-wrapper a.nav-tab-active:nth-child(2)');
-        tab_licenses = jQuery('.mashsb.nav-tab-wrapper a.nav-tab-active:nth-child(3)');
-
-        if (tab_addons.length > 0 || tab_licenses.length > 0) {
-            return;
-        }
-        // Return active tab from cookie
-        return mashsb_get_tab_from_cookie() + '-nav';
-    }
-
-    // Start easytabs()
-    if ($(".mashsb-tabs").length) {
-        $('#mashsb_container').easytabs({
-            animate: true,
-            updateHash: true,
-            defaultTab: mashsb_get_default_array()
-        });
-    }
-
-    // Get active tab (Not for Add-On Settings)
-    $('#mashsb_container').bind('easytabs:after', function () {
-        if (jQuery('.mashsb.nav-tab-wrapper a.nav-tab-active:nth-child(2)').length == 0) {
-            find_active_tab();
-        }
-    });
-
-    if ($(".mashtab").length) {
-        $('.tabcontent_container').easytabs({
-            animate: true,
-        });
-    }
-
-// Drag n drop social networks
-    $('#mashsb_network_list').sortable({
-        items: '.mashsb_list_item',
-        opacity: 0.6,
-        cursor: 'move',
-        axis: 'y',
-        update: function () {
-            var order = $(this).sortable('serialize') + '&action=mashsb_update_order';
-            $.post(ajaxurl, order, function (response) {
-                //alert(response);
-
-            });
-        }
-    });
-
-
-    // show / hide helper description
-    $('.mashsb-helper').click(function (e) {
-        e.preventDefault();
-        var icon = $(this),
-                bubble = $(this).next();
-
-        // Close any that are already open
-        $('.mashsb-message').not(bubble).hide();
-
-        var position = icon.position();
-        if (bubble.hasClass('bottom')) {
-            bubble.css({
-                'left': (position.left - bubble.width() / 2) + 'px',
-                'top': (position.top + icon.height() + 9) + 'px'
-            });
-        } else {
-            bubble.css({
-                'left': (position.left + icon.width() + 9) + 'px',
-                'top': (position.top + icon.height() / 2 - 18) + 'px'
-            });
-        }
-
-        bubble.toggle();
-        e.stopPropagation();
-    });
-
-    $('body').click(function () {
-        $('.mashsb-message').hide();
-    });
-
-    $('.mashsb-message').click(function (e) {
-        e.stopPropagation();
-    });
-
-});
-
+// Third Party
 /*
  * jQuery hashchange event - v1.3 - 7/21/2010
  * http://benalman.com/projects/jquery-hashchange-plugin/
- * 
+ *
  * Copyright (c) 2010 "Cowboy" Ben Alman
  * Dual licensed under the MIT and GPL licenses.
  * http://benalman.com/about/license/
@@ -192,16 +532,16 @@ jQuery(document).ready(function ($) {
     };
     $.fn[c].delay = 50;
     g[c] = $.extend(g[c], {setup: function () {
-            if (d) {
-                return false
-            }
-            $(f.start)
-        }, teardown: function () {
-            if (d) {
-                return false
-            }
-            $(f.stop)
-        }});
+        if (d) {
+            return false
+        }
+        $(f.start)
+    }, teardown: function () {
+        if (d) {
+            return false
+        }
+        $(f.stop)
+    }});
     f = (function () {
         var j = {}, p, m = a(), k = function (q) {
             return q
@@ -282,51 +622,51 @@ jQuery(document).ready(function ($) {
         // Attach to plugin anything that should be available via
         // the $container.data('easytabs') object
         var plugin = this,
-                $container = $(container),
-                defaults = {
-                    animate: true,
-                    panelActiveClass: "active",
-                    tabActiveClass: "active",
-                    defaultTab: "li:first-child",
-                    animationSpeed: "normal",
-                    tabs: "> ul > li",
-                    updateHash: true,
-                    cycle: false,
-                    collapsible: false,
-                    collapsedClass: "collapsed",
-                    collapsedByDefault: true,
-                    uiTabs: false,
-                    transitionIn: 'fadeIn',
-                    transitionOut: 'fadeOut',
-                    transitionInEasing: 'swing',
-                    transitionOutEasing: 'swing',
-                    transitionCollapse: 'slideUp',
-                    transitionUncollapse: 'slideDown',
-                    transitionCollapseEasing: 'swing',
-                    transitionUncollapseEasing: 'swing',
-                    containerClass: "",
-                    tabsClass: "",
-                    tabClass: "",
-                    panelClass: "",
-                    cache: true,
-                    event: 'click',
-                    panelContext: $container
-                },
+            $container = $(container),
+            defaults = {
+                animate: true,
+                panelActiveClass: "active",
+                tabActiveClass: "active",
+                defaultTab: "li:first-child",
+                animationSpeed: "normal",
+                tabs: "> ul > li",
+                updateHash: true,
+                cycle: false,
+                collapsible: false,
+                collapsedClass: "collapsed",
+                collapsedByDefault: true,
+                uiTabs: false,
+                transitionIn: 'fadeIn',
+                transitionOut: 'fadeOut',
+                transitionInEasing: 'swing',
+                transitionOutEasing: 'swing',
+                transitionCollapse: 'slideUp',
+                transitionUncollapse: 'slideDown',
+                transitionCollapseEasing: 'swing',
+                transitionUncollapseEasing: 'swing',
+                containerClass: "",
+                tabsClass: "",
+                tabClass: "",
+                panelClass: "",
+                cache: true,
+                event: 'click',
+                panelContext: $container
+            },
         // Internal instance variables
         // (not available via easytabs object)
-        $defaultTab,
-                $defaultTabLink,
-                transitions,
-                lastHash,
-                skipUpdateToHash,
-                animationSpeeds = {
-                    fast: 200,
-                    normal: 400,
-                    slow: 600
-                },
+            $defaultTab,
+            $defaultTabLink,
+            transitions,
+            lastHash,
+            skipUpdateToHash,
+            animationSpeeds = {
+                fast: 200,
+                normal: 400,
+                slow: 600
+            },
         // Shorthand variable so that we don't need to call
         // plugin.settings throughout the plugin code
-        settings;
+            settings;
 
         // =============================================================
         // Functions available via easytabs object
@@ -393,14 +733,14 @@ jQuery(document).ready(function ($) {
                 uncollapse: settings.transitionUncollapse,
                 halfSpeed: settings.animationSpeed / 2
             } :
-                    {
-                        show: "show",
-                        hide: "hide",
-                        speed: 0,
-                        collapse: "hide",
-                        uncollapse: "show",
-                        halfSpeed: 0
-                    };
+            {
+                show: "show",
+                hide: "hide",
+                speed: 0,
+                collapse: "hide",
+                uncollapse: "show",
+                halfSpeed: 0
+            };
         };
 
         // Find and instantiate tabs and panels.
@@ -412,61 +752,61 @@ jQuery(document).ready(function ($) {
             // Find the initial set of elements matching the setting.tabs
             // CSS selector within the container
             plugin.tabs = $container.find(settings.tabs),
-                    // Instantiate panels as empty jquery object
-                    plugin.panels = $(),
-                    plugin.tabs.each(function () {
-                        var $tab = $(this),
-                                $a = $tab.children('a'),
-                                // targetId is the ID of the panel, which is either the
-                                // `href` attribute for non-ajax tabs, or in the
-                                // `data-target` attribute for ajax tabs since the `href` is
-                                // the ajax URL
-                                targetId = $tab.children('a').data('target');
+                // Instantiate panels as empty jquery object
+                plugin.panels = $(),
+                plugin.tabs.each(function () {
+                    var $tab = $(this),
+                        $a = $tab.children('a'),
+                    // targetId is the ID of the panel, which is either the
+                    // `href` attribute for non-ajax tabs, or in the
+                    // `data-target` attribute for ajax tabs since the `href` is
+                    // the ajax URL
+                        targetId = $tab.children('a').data('target');
 
-                        $tab.data('easytabs', {});
+                    $tab.data('easytabs', {});
 
-                        // If the tab has a `data-target` attribute, and is thus an ajax tab
-                        if (targetId !== undefined && targetId !== null) {
-                            $tab.data('easytabs').ajax = $a.attr('href');
-                        } else {
-                            targetId = $a.attr('href');
+                    // If the tab has a `data-target` attribute, and is thus an ajax tab
+                    if (targetId !== undefined && targetId !== null) {
+                        $tab.data('easytabs').ajax = $a.attr('href');
+                    } else {
+                        targetId = $a.attr('href');
+                    }
+                    targetId = targetId.match(/#([^\?]+)/)[1];
+
+                    $matchingPanel = settings.panelContext.find("#" + targetId);
+
+                    // If tab has a matching panel, add it to panels
+                    if ($matchingPanel.length) {
+
+                        // Store panel height before hiding
+                        $matchingPanel.data('easytabs', {
+                            position: $matchingPanel.css('position'),
+                            visibility: $matchingPanel.css('visibility')
+                        });
+
+                        // Don't hide panel if it's active (allows `getTabs` to be called manually to re-instantiate tab collection)
+                        $matchingPanel.not(settings.panelActiveClass).hide();
+
+                        plugin.panels = plugin.panels.add($matchingPanel);
+
+                        $tab.data('easytabs').panel = $matchingPanel;
+
+                        // Otherwise, remove tab from tabs collection
+                    } else {
+                        plugin.tabs = plugin.tabs.not($tab);
+                        if ('console' in window) {
+                            console.warn('Warning: tab without matching panel for selector \'#' + targetId + '\' removed from set');
                         }
-                        targetId = targetId.match(/#([^\?]+)/)[1];
-
-                        $matchingPanel = settings.panelContext.find("#" + targetId);
-
-                        // If tab has a matching panel, add it to panels
-                        if ($matchingPanel.length) {
-
-                            // Store panel height before hiding
-                            $matchingPanel.data('easytabs', {
-                                position: $matchingPanel.css('position'),
-                                visibility: $matchingPanel.css('visibility')
-                            });
-
-                            // Don't hide panel if it's active (allows `getTabs` to be called manually to re-instantiate tab collection)
-                            $matchingPanel.not(settings.panelActiveClass).hide();
-
-                            plugin.panels = plugin.panels.add($matchingPanel);
-
-                            $tab.data('easytabs').panel = $matchingPanel;
-
-                            // Otherwise, remove tab from tabs collection
-                        } else {
-                            plugin.tabs = plugin.tabs.not($tab);
-                            if ('console' in window) {
-                                console.warn('Warning: tab without matching panel for selector \'#' + targetId + '\' removed from set');
-                            }
-                        }
-                    });
+                    }
+                });
         };
 
         // Select tab and fire callback
         plugin.selectTab = function ($clicked, callback) {
             var url = window.location,
-                    hash = url.hash.match(/^[^\?]*/)[0],
-                    $targetPanel = $clicked.parent().data('easytabs').panel,
-                    ajaxUrl = $clicked.parent().data('easytabs').ajax;
+                hash = url.hash.match(/^[^\?]*/)[0],
+                $targetPanel = $clicked.parent().data('easytabs').panel,
+                ajaxUrl = $clicked.parent().data('easytabs').ajax;
 
             // Tab is collapsible and active => toggle collapsed state
             if (settings.collapsible && !skipUpdateToHash && ($clicked.hasClass(settings.tabActiveClass) || $clicked.hasClass(settings.collapsedClass))) {
@@ -505,15 +845,15 @@ jQuery(document).ready(function ($) {
 
                     // Update CSS classes of tab and panel
                     $clicked.parent()
-                            .removeClass(settings.collapsedClass)
-                            .addClass(settings.tabActiveClass)
-                            .children()
-                            .removeClass(settings.collapsedClass)
-                            .addClass(settings.tabActiveClass);
+                        .removeClass(settings.collapsedClass)
+                        .addClass(settings.tabActiveClass)
+                        .children()
+                        .removeClass(settings.collapsedClass)
+                        .addClass(settings.tabActiveClass);
 
                     $targetPanel
-                            .addClass(settings.panelActiveClass)
-                            [transitions.uncollapse](transitions.speed, settings.transitionUncollapseEasing, function () {
+                        .addClass(settings.panelActiveClass)
+                        [transitions.uncollapse](transitions.speed, settings.transitionUncollapseEasing, function () {
                         $container.trigger('easytabs:midTransition', [$clicked, $targetPanel, settings]);
                         if (typeof callback == 'function')
                             callback();
@@ -524,12 +864,12 @@ jQuery(document).ready(function ($) {
 
                     // Update CSS classes of tab and panel
                     $clicked.addClass(settings.collapsedClass)
-                            .parent()
-                            .addClass(settings.collapsedClass);
+                        .parent()
+                        .addClass(settings.collapsedClass);
 
                     $targetPanel
-                            .removeClass(settings.panelActiveClass)
-                            [transitions.collapse](transitions.speed, settings.transitionCollapseEasing, function () {
+                        .removeClass(settings.panelActiveClass)
+                        [transitions.collapse](transitions.speed, settings.transitionCollapseEasing, function () {
                         $container.trigger("easytabs:midTransition", [$clicked, $targetPanel, settings]);
                         if (typeof callback == 'function')
                             callback();
@@ -558,8 +898,8 @@ jQuery(document).ready(function ($) {
         // Select matching tab when URL hash changes
         plugin.selectTabFromHashChange = function () {
             var hash = window.location.hash.match(/^[^\?]*/)[0],
-                    $tab = plugin.matchTab(hash),
-                    $panel;
+                $tab = plugin.matchTab(hash),
+                $panel;
 
             if (settings.updateHash) {
 
@@ -662,8 +1002,8 @@ jQuery(document).ready(function ($) {
         // called by init
         var setDefaultTab = function () {
             var hash = window.location.hash.match(/^[^\?]*/)[0],
-                    $selectedTab = plugin.matchTab(hash).parent(),
-                    $panel;
+                $selectedTab = plugin.matchTab(hash).parent(),
+                $panel;
 
             // If hash directly matches one of the tabs, active on page-load
             if ($selectedTab.length === 1) {
@@ -696,13 +1036,13 @@ jQuery(document).ready(function ($) {
         // Activate defaultTab (or collapse by default), called by setDefaultTab
         var activateDefaultTab = function ($selectedTab) {
             var defaultPanel,
-                    defaultAjaxUrl;
+                defaultAjaxUrl;
 
             if (settings.collapsible && $selectedTab.length === 0 && settings.collapsedByDefault) {
                 $defaultTab
-                        .addClass(settings.collapsedClass)
-                        .children()
-                        .addClass(settings.collapsedClass);
+                    .addClass(settings.collapsedClass)
+                    .children()
+                    .addClass(settings.collapsedClass);
 
             } else {
 
@@ -718,13 +1058,13 @@ jQuery(document).ready(function ($) {
                 }
 
                 $defaultTab.data('easytabs').panel
-                        .show()
-                        .addClass(settings.panelActiveClass);
+                    .show()
+                    .addClass(settings.panelActiveClass);
 
                 $defaultTab
-                        .addClass(settings.tabActiveClass)
-                        .children()
-                        .addClass(settings.tabActiveClass);
+                    .addClass(settings.tabActiveClass)
+                    .children()
+                    .addClass(settings.tabActiveClass);
             }
 
             // Fire event when the plugin is initialised
@@ -768,12 +1108,12 @@ jQuery(document).ready(function ($) {
 
             if (fire($container, "easytabs:before", [$clicked, $targetPanel, settings])) {
                 var $visiblePanel = plugin.panels.filter(":visible"),
-                        $panelContainer = $targetPanel.parent(),
-                        targetHeight,
-                        visibleHeight,
-                        heightDifference,
-                        showPanel,
-                        hash = window.location.hash.match(/^[^\?]*/)[0];
+                    $panelContainer = $targetPanel.parent(),
+                    targetHeight,
+                    visibleHeight,
+                    heightDifference,
+                    showPanel,
+                    hash = window.location.hash.match(/^[^\?]*/)[0];
 
                 if (settings.animate) {
                     targetHeight = getHeightForHidden($targetPanel);
@@ -813,7 +1153,7 @@ jQuery(document).ready(function ($) {
                     }
 
                     $targetPanel
-                            [transitions.show](transitions.speed, settings.transitionInEasing, function () {
+                        [transitions.show](transitions.speed, settings.transitionInEasing, function () {
                         $panelContainer.css({height: '', 'min-height': ''}); // After the transition, unset the height
                         $container.trigger("easytabs:after", [$clicked, $targetPanel, settings]);
                         // callback only gets called if selectTab actually does something, since it's inside the if block
@@ -854,10 +1194,10 @@ jQuery(document).ready(function ($) {
 
                 if ($visiblePanel.length) {
                     $visiblePanel
-                            [transitions.hide](transitions.speed, settings.transitionOutEasing, showPanel);
+                        [transitions.hide](transitions.speed, settings.transitionOutEasing, showPanel);
                 } else {
                     $targetPanel
-                            [transitions.uncollapse](transitions.speed, settings.transitionUncollapseEasing, showPanel);
+                        [transitions.uncollapse](transitions.speed, settings.transitionUncollapseEasing, showPanel);
                 }
             }
         };
@@ -872,8 +1212,8 @@ jQuery(document).ready(function ($) {
 
             // this is the only property easytabs changes, so we need to grab its value on each tab change
             var display = $targetPanel.css('display'),
-                    outerCloak,
-                    height;
+                outerCloak,
+                height;
 
             // Workaround with wrapping height, because firefox returns wrong
             // height if element itself has absolute positioning.
@@ -886,9 +1226,9 @@ jQuery(document).ready(function ($) {
                 outerCloak = $('<div></div>', {'visibility': 'hidden', 'overflow': 'hidden'});
             }
             height = $targetPanel
-                    .wrap(outerCloak)
-                    .css({'position': 'relative', 'visibility': 'hidden', 'display': 'block'})
-                    .outerHeight();
+                .wrap(outerCloak)
+                .css({'position': 'relative', 'visibility': 'hidden', 'display': 'block'})
+                .outerHeight();
 
             $targetPanel.unwrap();
 
@@ -957,7 +1297,7 @@ jQuery(document).ready(function ($) {
 
         return this.each(function () {
             var $this = $(this),
-                    plugin = $this.data('easytabs');
+                plugin = $this.data('easytabs');
 
             // Initialization was called with $(el).easytabs( { options } );
             if (undefined === plugin) {
@@ -978,312 +1318,312 @@ jQuery(document).ready(function ($) {
 /*
  colpick Color Picker
  Copyright 2013 Jose Vargas. Licensed under GPL license. Based on Stefan Petre's Color Picker www.eyecon.ro, dual licensed under the MIT and GPL licenses
- 
+
  For usage and examples: colpick.com/plugin
  */
 
 (function ($) {
     var colpick = function () {
         var
-                tpl = '<div class="colpick"><div class="colpick_color"><div class="colpick_color_overlay1"><div class="colpick_color_overlay2"><div class="colpick_selector_outer"><div class="colpick_selector_inner"></div></div></div></div></div><div class="colpick_hue"><div class="colpick_hue_arrs"><div class="colpick_hue_larr"></div><div class="colpick_hue_rarr"></div></div></div><div class="colpick_new_color"></div><div class="colpick_current_color"></div><div class="colpick_hex_field"><div class="colpick_field_letter">#</div><input type="text" maxlength="6" size="6" /></div><div class="colpick_rgb_r colpick_field"><div class="colpick_field_letter">R</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_rgb_g colpick_field"><div class="colpick_field_letter">G</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_rgb_b colpick_field"><div class="colpick_field_letter">B</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_hsb_h colpick_field"><div class="colpick_field_letter">H</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_hsb_s colpick_field"><div class="colpick_field_letter">S</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_hsb_b colpick_field"><div class="colpick_field_letter">B</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_submit"></div></div>',
-                defaults = {
-                    showEvent: 'click',
-                    onShow: function () {
-                    },
-                    onBeforeShow: function () {
-                    },
-                    onHide: function () {
-                    },
-                    onChange: function () {
-                    },
-                    onSubmit: function () {
-                    },
-                    colorScheme: 'light',
-                    color: '3289c7',
-                    livePreview: true,
-                    flat: false,
-                    layout: 'full',
-                    submit: 1,
-                    submitText: 'OK',
-                    height: 156
+            tpl = '<div class="colpick"><div class="colpick_color"><div class="colpick_color_overlay1"><div class="colpick_color_overlay2"><div class="colpick_selector_outer"><div class="colpick_selector_inner"></div></div></div></div></div><div class="colpick_hue"><div class="colpick_hue_arrs"><div class="colpick_hue_larr"></div><div class="colpick_hue_rarr"></div></div></div><div class="colpick_new_color"></div><div class="colpick_current_color"></div><div class="colpick_hex_field"><div class="colpick_field_letter">#</div><input type="text" maxlength="6" size="6" /></div><div class="colpick_rgb_r colpick_field"><div class="colpick_field_letter">R</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_rgb_g colpick_field"><div class="colpick_field_letter">G</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_rgb_b colpick_field"><div class="colpick_field_letter">B</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_hsb_h colpick_field"><div class="colpick_field_letter">H</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_hsb_s colpick_field"><div class="colpick_field_letter">S</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_hsb_b colpick_field"><div class="colpick_field_letter">B</div><input type="text" maxlength="3" size="3" /><div class="colpick_field_arrs"><div class="colpick_field_uarr"></div><div class="colpick_field_darr"></div></div></div><div class="colpick_submit"></div></div>',
+            defaults = {
+                showEvent: 'click',
+                onShow: function () {
                 },
+                onBeforeShow: function () {
+                },
+                onHide: function () {
+                },
+                onChange: function () {
+                },
+                onSubmit: function () {
+                },
+                colorScheme: 'light',
+                color: '3289c7',
+                livePreview: true,
+                flat: false,
+                layout: 'full',
+                submit: 1,
+                submitText: 'OK',
+                height: 156
+            },
         //Fill the inputs of the plugin
-        fillRGBFields = function (hsb, cal) {
-            var rgb = hsbToRgb(hsb);
-            $(cal).data('colpick').fields
+            fillRGBFields = function (hsb, cal) {
+                var rgb = hsbToRgb(hsb);
+                $(cal).data('colpick').fields
                     .eq(1).val(rgb.r).end()
                     .eq(2).val(rgb.g).end()
                     .eq(3).val(rgb.b).end();
-        },
-                fillHSBFields = function (hsb, cal) {
-                    $(cal).data('colpick').fields
-                            .eq(4).val(Math.round(hsb.h)).end()
-                            .eq(5).val(Math.round(hsb.s)).end()
-                            .eq(6).val(Math.round(hsb.b)).end();
-                },
-                fillHexFields = function (hsb, cal) {
-                    $(cal).data('colpick').fields.eq(0).val(hsbToHex(hsb));
-                },
-                //Set the round selector position
-                setSelector = function (hsb, cal) {
-                    $(cal).data('colpick').selector.css('backgroundColor', '#' + hsbToHex({h: hsb.h, s: 100, b: 100}));
-                    $(cal).data('colpick').selectorIndic.css({
-                        left: parseInt($(cal).data('colpick').height * hsb.s / 100, 10),
-                        top: parseInt($(cal).data('colpick').height * (100 - hsb.b) / 100, 10)
+            },
+            fillHSBFields = function (hsb, cal) {
+                $(cal).data('colpick').fields
+                    .eq(4).val(Math.round(hsb.h)).end()
+                    .eq(5).val(Math.round(hsb.s)).end()
+                    .eq(6).val(Math.round(hsb.b)).end();
+            },
+            fillHexFields = function (hsb, cal) {
+                $(cal).data('colpick').fields.eq(0).val(hsbToHex(hsb));
+            },
+        //Set the round selector position
+            setSelector = function (hsb, cal) {
+                $(cal).data('colpick').selector.css('backgroundColor', '#' + hsbToHex({h: hsb.h, s: 100, b: 100}));
+                $(cal).data('colpick').selectorIndic.css({
+                    left: parseInt($(cal).data('colpick').height * hsb.s / 100, 10),
+                    top: parseInt($(cal).data('colpick').height * (100 - hsb.b) / 100, 10)
+                });
+            },
+        //Set the hue selector position
+            setHue = function (hsb, cal) {
+                $(cal).data('colpick').hue.css('top', parseInt($(cal).data('colpick').height - $(cal).data('colpick').height * hsb.h / 360, 10));
+            },
+        //Set current and new colors
+            setCurrentColor = function (hsb, cal) {
+                $(cal).data('colpick').currentColor.css('backgroundColor', '#' + hsbToHex(hsb));
+            },
+            setNewColor = function (hsb, cal) {
+                $(cal).data('colpick').newColor.css('backgroundColor', '#' + hsbToHex(hsb));
+            },
+        //Called when the new color is changed
+            change = function (ev) {
+                var cal = $(this).parent().parent(), col;
+                if (this.parentNode.className.indexOf('_hex') > 0) {
+                    cal.data('colpick').color = col = hexToHsb(fixHex(this.value));
+                    fillRGBFields(col, cal.get(0));
+                    fillHSBFields(col, cal.get(0));
+                } else if (this.parentNode.className.indexOf('_hsb') > 0) {
+                    cal.data('colpick').color = col = fixHSB({
+                        h: parseInt(cal.data('colpick').fields.eq(4).val(), 10),
+                        s: parseInt(cal.data('colpick').fields.eq(5).val(), 10),
+                        b: parseInt(cal.data('colpick').fields.eq(6).val(), 10)
                     });
-                },
-                //Set the hue selector position
-                setHue = function (hsb, cal) {
-                    $(cal).data('colpick').hue.css('top', parseInt($(cal).data('colpick').height - $(cal).data('colpick').height * hsb.h / 360, 10));
-                },
-                //Set current and new colors
-                setCurrentColor = function (hsb, cal) {
-                    $(cal).data('colpick').currentColor.css('backgroundColor', '#' + hsbToHex(hsb));
-                },
-                setNewColor = function (hsb, cal) {
-                    $(cal).data('colpick').newColor.css('backgroundColor', '#' + hsbToHex(hsb));
-                },
-                //Called when the new color is changed
-                change = function (ev) {
-                    var cal = $(this).parent().parent(), col;
-                    if (this.parentNode.className.indexOf('_hex') > 0) {
-                        cal.data('colpick').color = col = hexToHsb(fixHex(this.value));
-                        fillRGBFields(col, cal.get(0));
-                        fillHSBFields(col, cal.get(0));
-                    } else if (this.parentNode.className.indexOf('_hsb') > 0) {
-                        cal.data('colpick').color = col = fixHSB({
-                            h: parseInt(cal.data('colpick').fields.eq(4).val(), 10),
-                            s: parseInt(cal.data('colpick').fields.eq(5).val(), 10),
-                            b: parseInt(cal.data('colpick').fields.eq(6).val(), 10)
-                        });
-                        fillRGBFields(col, cal.get(0));
-                        fillHexFields(col, cal.get(0));
-                    } else {
-                        cal.data('colpick').color = col = rgbToHsb(fixRGB({
-                            r: parseInt(cal.data('colpick').fields.eq(1).val(), 10),
-                            g: parseInt(cal.data('colpick').fields.eq(2).val(), 10),
-                            b: parseInt(cal.data('colpick').fields.eq(3).val(), 10)
-                        }));
-                        fillHexFields(col, cal.get(0));
-                        fillHSBFields(col, cal.get(0));
-                    }
-                    setSelector(col, cal.get(0));
-                    setHue(col, cal.get(0));
-                    setNewColor(col, cal.get(0));
-                    cal.data('colpick').onChange.apply(cal.parent(), [col, hsbToHex(col), hsbToRgb(col), cal.data('colpick').el, 0]);
-                },
-                //Change style on blur and on focus of inputs
-                blur = function (ev) {
-                    $(this).parent().removeClass('colpick_focus');
-                },
-                focus = function () {
-                    $(this).parent().parent().data('colpick').fields.parent().removeClass('colpick_focus');
-                    $(this).parent().addClass('colpick_focus');
-                },
-                //Increment/decrement arrows functions
-                downIncrement = function (ev) {
-                    ev.preventDefault ? ev.preventDefault() : ev.returnValue = false;
-                    var field = $(this).parent().find('input').focus();
-                    var current = {
-                        el: $(this).parent().addClass('colpick_slider'),
-                        max: this.parentNode.className.indexOf('_hsb_h') > 0 ? 360 : (this.parentNode.className.indexOf('_hsb') > 0 ? 100 : 255),
-                        y: ev.pageY,
-                        field: field,
-                        val: parseInt(field.val(), 10),
-                        preview: $(this).parent().parent().data('colpick').livePreview
-                    };
-                    $(document).mouseup(current, upIncrement);
-                    $(document).mousemove(current, moveIncrement);
-                },
-                moveIncrement = function (ev) {
-                    ev.data.field.val(Math.max(0, Math.min(ev.data.max, parseInt(ev.data.val - ev.pageY + ev.data.y, 10))));
-                    if (ev.data.preview) {
-                        change.apply(ev.data.field.get(0), [true]);
-                    }
-                    return false;
-                },
-                upIncrement = function (ev) {
-                    change.apply(ev.data.field.get(0), [true]);
-                    ev.data.el.removeClass('colpick_slider').find('input').focus();
-                    $(document).off('mouseup', upIncrement);
-                    $(document).off('mousemove', moveIncrement);
-                    return false;
-                },
-                //Hue slider functions
-                downHue = function (ev) {
-                    ev.preventDefault ? ev.preventDefault() : ev.returnValue = false;
-                    var current = {
-                        cal: $(this).parent(),
-                        y: $(this).offset().top
-                    };
-                    $(document).on('mouseup touchend', current, upHue);
-                    $(document).on('mousemove touchmove', current, moveHue);
-
-                    var pageY = ((ev.type == 'touchstart') ? ev.originalEvent.changedTouches[0].pageY : ev.pageY);
-                    change.apply(
-                            current.cal.data('colpick')
-                            .fields.eq(4).val(parseInt(360 * (current.cal.data('colpick').height - (pageY - current.y)) / current.cal.data('colpick').height, 10))
-                            .get(0),
-                            [current.cal.data('colpick').livePreview]
-                            );
-                    return false;
-                },
-                moveHue = function (ev) {
-                    var pageY = ((ev.type == 'touchmove') ? ev.originalEvent.changedTouches[0].pageY : ev.pageY);
-                    change.apply(
-                            ev.data.cal.data('colpick')
-                            .fields.eq(4).val(parseInt(360 * (ev.data.cal.data('colpick').height - Math.max(0, Math.min(ev.data.cal.data('colpick').height, (pageY - ev.data.y)))) / ev.data.cal.data('colpick').height, 10))
-                            .get(0),
-                            [ev.data.preview]
-                            );
-                    return false;
-                },
-                upHue = function (ev) {
-                    fillRGBFields(ev.data.cal.data('colpick').color, ev.data.cal.get(0));
-                    fillHexFields(ev.data.cal.data('colpick').color, ev.data.cal.get(0));
-                    $(document).off('mouseup touchend', upHue);
-                    $(document).off('mousemove touchmove', moveHue);
-                    return false;
-                },
-                //Color selector functions
-                downSelector = function (ev) {
-                    ev.preventDefault ? ev.preventDefault() : ev.returnValue = false;
-                    var current = {
-                        cal: $(this).parent(),
-                        pos: $(this).offset()
-                    };
-                    current.preview = current.cal.data('colpick').livePreview;
-
-                    $(document).on('mouseup touchend', current, upSelector);
-                    $(document).on('mousemove touchmove', current, moveSelector);
-
-                    var payeX, pageY;
-                    if (ev.type == 'touchstart') {
-                        pageX = ev.originalEvent.changedTouches[0].pageX,
-                                pageY = ev.originalEvent.changedTouches[0].pageY;
-                    } else {
-                        pageX = ev.pageX;
-                        pageY = ev.pageY;
-                    }
-
-                    change.apply(
-                            current.cal.data('colpick').fields
-                            .eq(6).val(parseInt(100 * (current.cal.data('colpick').height - (pageY - current.pos.top)) / current.cal.data('colpick').height, 10)).end()
-                            .eq(5).val(parseInt(100 * (pageX - current.pos.left) / current.cal.data('colpick').height, 10))
-                            .get(0),
-                            [current.preview]
-                            );
-                    return false;
-                },
-                moveSelector = function (ev) {
-                    var payeX, pageY;
-                    if (ev.type == 'touchmove') {
-                        pageX = ev.originalEvent.changedTouches[0].pageX,
-                                pageY = ev.originalEvent.changedTouches[0].pageY;
-                    } else {
-                        pageX = ev.pageX;
-                        pageY = ev.pageY;
-                    }
-
-                    change.apply(
-                            ev.data.cal.data('colpick').fields
-                            .eq(6).val(parseInt(100 * (ev.data.cal.data('colpick').height - Math.max(0, Math.min(ev.data.cal.data('colpick').height, (pageY - ev.data.pos.top)))) / ev.data.cal.data('colpick').height, 10)).end()
-                            .eq(5).val(parseInt(100 * (Math.max(0, Math.min(ev.data.cal.data('colpick').height, (pageX - ev.data.pos.left)))) / ev.data.cal.data('colpick').height, 10))
-                            .get(0),
-                            [ev.data.preview]
-                            );
-                    return false;
-                },
-                upSelector = function (ev) {
-                    fillRGBFields(ev.data.cal.data('colpick').color, ev.data.cal.get(0));
-                    fillHexFields(ev.data.cal.data('colpick').color, ev.data.cal.get(0));
-                    $(document).off('mouseup touchend', upSelector);
-                    $(document).off('mousemove touchmove', moveSelector);
-                    return false;
-                },
-                //Submit button
-                clickSubmit = function (ev) {
-                    var cal = $(this).parent();
-                    var col = cal.data('colpick').color;
-                    cal.data('colpick').origColor = col;
-                    setCurrentColor(col, cal.get(0));
-                    cal.data('colpick').onSubmit(col, hsbToHex(col), hsbToRgb(col), cal.data('colpick').el);
-                },
-                //Show/hide the color picker
-                show = function (ev) {
-                    // Prevent the trigger of any direct parent
-                    ev.stopPropagation();
-                    var cal = $('#' + $(this).data('colpickId'));
-                    cal.data('colpick').onBeforeShow.apply(this, [cal.get(0)]);
-                    var pos = $(this).offset();
-                    var top = pos.top + this.offsetHeight;
-                    var left = pos.left;
-                    var viewPort = getViewport();
-                    var calW = cal.width();
-                    if (left + calW > viewPort.l + viewPort.w) {
-                        left -= calW;
-                    }
-                    cal.css({left: left + 'px', top: top + 'px'});
-                    if (cal.data('colpick').onShow.apply(this, [cal.get(0)]) != false) {
-                        cal.show();
-                    }
-                    //Hide when user clicks outside
-                    $('html').mousedown({cal: cal}, hide);
-                    cal.mousedown(function (ev) {
-                        ev.stopPropagation();
-                    })
-                },
-                hide = function (ev) {
-                    if (ev.data.cal.data('colpick').onHide.apply(this, [ev.data.cal.get(0)]) != false) {
-                        ev.data.cal.hide();
-                    }
-                    $('html').off('mousedown', hide);
-                },
-                getViewport = function () {
-                    var m = document.compatMode == 'CSS1Compat';
-                    return {
-                        l: window.pageXOffset || (m ? document.documentElement.scrollLeft : document.body.scrollLeft),
-                        w: window.innerWidth || (m ? document.documentElement.clientWidth : document.body.clientWidth)
-                    };
-                },
-                //Fix the values if the user enters a negative or high value
-                fixHSB = function (hsb) {
-                    return {
-                        h: Math.min(360, Math.max(0, hsb.h)),
-                        s: Math.min(100, Math.max(0, hsb.s)),
-                        b: Math.min(100, Math.max(0, hsb.b))
-                    };
-                },
-                fixRGB = function (rgb) {
-                    return {
-                        r: Math.min(255, Math.max(0, rgb.r)),
-                        g: Math.min(255, Math.max(0, rgb.g)),
-                        b: Math.min(255, Math.max(0, rgb.b))
-                    };
-                },
-                fixHex = function (hex) {
-                    var len = 6 - hex.length;
-                    if (len > 0) {
-                        var o = [];
-                        for (var i = 0; i < len; i++) {
-                            o.push('0');
-                        }
-                        o.push(hex);
-                        hex = o.join('');
-                    }
-                    return hex;
-                },
-                restoreOriginal = function () {
-                    var cal = $(this).parent();
-                    var col = cal.data('colpick').origColor;
-                    cal.data('colpick').color = col;
                     fillRGBFields(col, cal.get(0));
                     fillHexFields(col, cal.get(0));
+                } else {
+                    cal.data('colpick').color = col = rgbToHsb(fixRGB({
+                        r: parseInt(cal.data('colpick').fields.eq(1).val(), 10),
+                        g: parseInt(cal.data('colpick').fields.eq(2).val(), 10),
+                        b: parseInt(cal.data('colpick').fields.eq(3).val(), 10)
+                    }));
+                    fillHexFields(col, cal.get(0));
                     fillHSBFields(col, cal.get(0));
-                    setSelector(col, cal.get(0));
-                    setHue(col, cal.get(0));
-                    setNewColor(col, cal.get(0));
+                }
+                setSelector(col, cal.get(0));
+                setHue(col, cal.get(0));
+                setNewColor(col, cal.get(0));
+                cal.data('colpick').onChange.apply(cal.parent(), [col, hsbToHex(col), hsbToRgb(col), cal.data('colpick').el, 0]);
+            },
+        //Change style on blur and on focus of inputs
+            blur = function (ev) {
+                $(this).parent().removeClass('colpick_focus');
+            },
+            focus = function () {
+                $(this).parent().parent().data('colpick').fields.parent().removeClass('colpick_focus');
+                $(this).parent().addClass('colpick_focus');
+            },
+        //Increment/decrement arrows functions
+            downIncrement = function (ev) {
+                ev.preventDefault ? ev.preventDefault() : ev.returnValue = false;
+                var field = $(this).parent().find('input').focus();
+                var current = {
+                    el: $(this).parent().addClass('colpick_slider'),
+                    max: this.parentNode.className.indexOf('_hsb_h') > 0 ? 360 : (this.parentNode.className.indexOf('_hsb') > 0 ? 100 : 255),
+                    y: ev.pageY,
+                    field: field,
+                    val: parseInt(field.val(), 10),
+                    preview: $(this).parent().parent().data('colpick').livePreview
                 };
+                $(document).mouseup(current, upIncrement);
+                $(document).mousemove(current, moveIncrement);
+            },
+            moveIncrement = function (ev) {
+                ev.data.field.val(Math.max(0, Math.min(ev.data.max, parseInt(ev.data.val - ev.pageY + ev.data.y, 10))));
+                if (ev.data.preview) {
+                    change.apply(ev.data.field.get(0), [true]);
+                }
+                return false;
+            },
+            upIncrement = function (ev) {
+                change.apply(ev.data.field.get(0), [true]);
+                ev.data.el.removeClass('colpick_slider').find('input').focus();
+                $(document).off('mouseup', upIncrement);
+                $(document).off('mousemove', moveIncrement);
+                return false;
+            },
+        //Hue slider functions
+            downHue = function (ev) {
+                ev.preventDefault ? ev.preventDefault() : ev.returnValue = false;
+                var current = {
+                    cal: $(this).parent(),
+                    y: $(this).offset().top
+                };
+                $(document).on('mouseup touchend', current, upHue);
+                $(document).on('mousemove touchmove', current, moveHue);
+
+                var pageY = ((ev.type == 'touchstart') ? ev.originalEvent.changedTouches[0].pageY : ev.pageY);
+                change.apply(
+                    current.cal.data('colpick')
+                        .fields.eq(4).val(parseInt(360 * (current.cal.data('colpick').height - (pageY - current.y)) / current.cal.data('colpick').height, 10))
+                        .get(0),
+                    [current.cal.data('colpick').livePreview]
+                );
+                return false;
+            },
+            moveHue = function (ev) {
+                var pageY = ((ev.type == 'touchmove') ? ev.originalEvent.changedTouches[0].pageY : ev.pageY);
+                change.apply(
+                    ev.data.cal.data('colpick')
+                        .fields.eq(4).val(parseInt(360 * (ev.data.cal.data('colpick').height - Math.max(0, Math.min(ev.data.cal.data('colpick').height, (pageY - ev.data.y)))) / ev.data.cal.data('colpick').height, 10))
+                        .get(0),
+                    [ev.data.preview]
+                );
+                return false;
+            },
+            upHue = function (ev) {
+                fillRGBFields(ev.data.cal.data('colpick').color, ev.data.cal.get(0));
+                fillHexFields(ev.data.cal.data('colpick').color, ev.data.cal.get(0));
+                $(document).off('mouseup touchend', upHue);
+                $(document).off('mousemove touchmove', moveHue);
+                return false;
+            },
+        //Color selector functions
+            downSelector = function (ev) {
+                ev.preventDefault ? ev.preventDefault() : ev.returnValue = false;
+                var current = {
+                    cal: $(this).parent(),
+                    pos: $(this).offset()
+                };
+                current.preview = current.cal.data('colpick').livePreview;
+
+                $(document).on('mouseup touchend', current, upSelector);
+                $(document).on('mousemove touchmove', current, moveSelector);
+
+                var payeX, pageY;
+                if (ev.type == 'touchstart') {
+                    pageX = ev.originalEvent.changedTouches[0].pageX,
+                        pageY = ev.originalEvent.changedTouches[0].pageY;
+                } else {
+                    pageX = ev.pageX;
+                    pageY = ev.pageY;
+                }
+
+                change.apply(
+                    current.cal.data('colpick').fields
+                        .eq(6).val(parseInt(100 * (current.cal.data('colpick').height - (pageY - current.pos.top)) / current.cal.data('colpick').height, 10)).end()
+                        .eq(5).val(parseInt(100 * (pageX - current.pos.left) / current.cal.data('colpick').height, 10))
+                        .get(0),
+                    [current.preview]
+                );
+                return false;
+            },
+            moveSelector = function (ev) {
+                var payeX, pageY;
+                if (ev.type == 'touchmove') {
+                    pageX = ev.originalEvent.changedTouches[0].pageX,
+                        pageY = ev.originalEvent.changedTouches[0].pageY;
+                } else {
+                    pageX = ev.pageX;
+                    pageY = ev.pageY;
+                }
+
+                change.apply(
+                    ev.data.cal.data('colpick').fields
+                        .eq(6).val(parseInt(100 * (ev.data.cal.data('colpick').height - Math.max(0, Math.min(ev.data.cal.data('colpick').height, (pageY - ev.data.pos.top)))) / ev.data.cal.data('colpick').height, 10)).end()
+                        .eq(5).val(parseInt(100 * (Math.max(0, Math.min(ev.data.cal.data('colpick').height, (pageX - ev.data.pos.left)))) / ev.data.cal.data('colpick').height, 10))
+                        .get(0),
+                    [ev.data.preview]
+                );
+                return false;
+            },
+            upSelector = function (ev) {
+                fillRGBFields(ev.data.cal.data('colpick').color, ev.data.cal.get(0));
+                fillHexFields(ev.data.cal.data('colpick').color, ev.data.cal.get(0));
+                $(document).off('mouseup touchend', upSelector);
+                $(document).off('mousemove touchmove', moveSelector);
+                return false;
+            },
+        //Submit button
+            clickSubmit = function (ev) {
+                var cal = $(this).parent();
+                var col = cal.data('colpick').color;
+                cal.data('colpick').origColor = col;
+                setCurrentColor(col, cal.get(0));
+                cal.data('colpick').onSubmit(col, hsbToHex(col), hsbToRgb(col), cal.data('colpick').el);
+            },
+        //Show/hide the color picker
+            show = function (ev) {
+                // Prevent the trigger of any direct parent
+                ev.stopPropagation();
+                var cal = $('#' + $(this).data('colpickId'));
+                cal.data('colpick').onBeforeShow.apply(this, [cal.get(0)]);
+                var pos = $(this).offset();
+                var top = pos.top + this.offsetHeight;
+                var left = pos.left;
+                var viewPort = getViewport();
+                var calW = cal.width();
+                if (left + calW > viewPort.l + viewPort.w) {
+                    left -= calW;
+                }
+                cal.css({left: left + 'px', top: top + 'px'});
+                if (cal.data('colpick').onShow.apply(this, [cal.get(0)]) != false) {
+                    cal.show();
+                }
+                //Hide when user clicks outside
+                $('html').mousedown({cal: cal}, hide);
+                cal.mousedown(function (ev) {
+                    ev.stopPropagation();
+                })
+            },
+            hide = function (ev) {
+                if (ev.data.cal.data('colpick').onHide.apply(this, [ev.data.cal.get(0)]) != false) {
+                    ev.data.cal.hide();
+                }
+                $('html').off('mousedown', hide);
+            },
+            getViewport = function () {
+                var m = document.compatMode == 'CSS1Compat';
+                return {
+                    l: window.pageXOffset || (m ? document.documentElement.scrollLeft : document.body.scrollLeft),
+                    w: window.innerWidth || (m ? document.documentElement.clientWidth : document.body.clientWidth)
+                };
+            },
+        //Fix the values if the user enters a negative or high value
+            fixHSB = function (hsb) {
+                return {
+                    h: Math.min(360, Math.max(0, hsb.h)),
+                    s: Math.min(100, Math.max(0, hsb.s)),
+                    b: Math.min(100, Math.max(0, hsb.b))
+                };
+            },
+            fixRGB = function (rgb) {
+                return {
+                    r: Math.min(255, Math.max(0, rgb.r)),
+                    g: Math.min(255, Math.max(0, rgb.g)),
+                    b: Math.min(255, Math.max(0, rgb.b))
+                };
+            },
+            fixHex = function (hex) {
+                var len = 6 - hex.length;
+                if (len > 0) {
+                    var o = [];
+                    for (var i = 0; i < len; i++) {
+                        o.push('0');
+                    }
+                    o.push(hex);
+                    hex = o.join('');
+                }
+                return hex;
+            },
+            restoreOriginal = function () {
+                var cal = $(this).parent();
+                var col = cal.data('colpick').origColor;
+                cal.data('colpick').color = col;
+                fillRGBFields(col, cal.get(0));
+                fillHexFields(col, cal.get(0));
+                fillHSBFields(col, cal.get(0));
+                setSelector(col, cal.get(0));
+                setHue(col, cal.get(0));
+                setNewColor(col, cal.get(0));
+            };
         return {
             init: function (opt) {
                 opt = $.extend({}, defaults, opt || {});
@@ -1540,7 +1880,7 @@ jQuery(document).ready(function ($) {
 // Load twitter button async
 window.twttr = (function (d, s, id) {
     var js, fjs = d.getElementsByTagName(s)[0],
-            t = window.twttr || {};
+        t = window.twttr || {};
     if (d.getElementById(id))
         return t;
     js = d.createElement(s);

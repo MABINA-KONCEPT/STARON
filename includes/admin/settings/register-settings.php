@@ -627,6 +627,12 @@ So the MashShare open graph data will be containing the same social meta data th
                     'desc' => __( '<strong>Note: </strong> Check this box before you get in contact with our support team. This allows us to check publically hidden debug messages on your website. Do not forget to disable it thereafter! Enable this also to write daily sorted log files of requested share counts to folder <strong>/wp-content/plugins/mashsharer/logs</strong>. Please send us this files when you notice a wrong share count.' . mashsb_log_permissions(), 'mashsb' ),
                     'type' => 'checkbox'
                 ),
+                'fb_debug' => array(
+                    'id' => 'fb_debug',
+                    'name' => __( 'Debug URL', 'mashsb' ),
+                    'desc' => __( 'Enter URL for debugging and click save', 'mashsb' ),
+                    'type' => 'debug'
+                ),
             )
         ),
         'licenses' => apply_filters( 'mashsb_settings_licenses', array(
@@ -1740,4 +1746,48 @@ function mashsb_get_user_roles() {
         }
     }
     return $roles;
+}
+
+/**
+ * URL input field to debug URL against Facebook API and return header data
+ * 
+ * @global $mashsb_options $mashsb_options
+ * @param array $args
+ */
+function mashsb_debug_callback( $args ) {
+    global $mashsb_options;
+
+    if( isset( $mashsb_options[$args['id']] ) ){
+        $value = $mashsb_options[$args['id']];
+    }
+    else {
+        $value = isset( $args['std'] ) ? $args['std'] : '';
+    }
+    
+    $wp_args = array(
+    'timeout'     => 5,
+    'redirection' => 5,
+    'httpversion' => '1.0',
+    'blocking'    => true,
+    'headers'     => array(),
+    'cookies'     => array(),
+    'body'        => null,
+    'compress'    => false,
+    'decompress'  => true,
+    'sslverify'   => true,
+    'stream'      => false,
+    'filename'    => null
+); 
+    if (!empty($value)){
+    $response = wp_remote_get( 'http://graph.facebook.com/?id=' . esc_url_raw($value), $wp_args );
+    } else {
+        $response = '';
+    }
+
+    $size = ( isset( $args['size'] ) && !is_null( $args['size'] ) ) ? $args['size'] : 'regular';
+    $html = '<input type="text" class="' . $size . '-text" id="mashsb_settings[' . $args['id'] . ']" name="mashsb_settings[' . $args['id'] . ']" value="' . esc_attr( stripslashes( $value ) ) . '"/>';
+    $html .= '<label class="mashsb_hidden" class="mashsb_hidden" for="mashsb_settings[' . $args['id'] . ']"> ' . $args['desc'] . '</label>';
+    $html .= '<textarea class="large-text mashsb-textarea" cols="50" rows="15" id="mashsb_debug_area" name="mashsb_debug_area">' . json_encode($response) . '</textarea>';
+
+    echo $html;
 }

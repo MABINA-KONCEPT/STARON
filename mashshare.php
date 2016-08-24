@@ -214,6 +214,7 @@ if( !class_exists( 'mashshare' ) ) :
                 require_once MASHSB_PLUGIN_DIR . 'includes/admin/settings/user-profiles.php';
                 require_once MASHSB_PLUGIN_DIR . 'includes/admin/tools.php';
                 require_once MASHSB_PLUGIN_DIR . 'includes/admin/dashboard.php';
+                require_once MASHSB_PLUGIN_DIR . 'includes/admin/class-facebook-debug.php';
             }
         }
 

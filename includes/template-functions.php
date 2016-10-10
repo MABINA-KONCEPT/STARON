@@ -173,7 +173,7 @@ function getSharedcount( $url ) {
     if( !empty( $url ) && is_null( $post ) ) {
         return apply_filters( 'filter_get_sharedcount', mashsbGetNonPostShares( $url ) );
     }
-
+    
     /*
      * Refresh Cache
      */
